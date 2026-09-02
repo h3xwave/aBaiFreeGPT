@@ -257,14 +257,14 @@ _BUILTIN_DEFINITIONS: list[dict] = [
             {
                 "key": "cf_mail_api_base",
                 "label": "Cloudflare Mail API 地址",
-                "placeholder": "https://apimail.ihxw.eu.org",
+                "placeholder": "https://mail.example.com",
                 "category": "connection",
                 "hint": "Cloudflare Worker / Temp Email 服务的 API 基础地址（末尾无斜杠）。",
             },
             {
                 "key": "cf_mail_domain",
                 "label": "邮箱域名（多域名用逗号分隔）",
-                "placeholder": "hxwhub.eu.org, mail.example.com",
+                "placeholder": "domain1.com, domain2.com",
                 "category": "connection",
                 "hint": "支持配置多个域名，用中英文逗号或换行分隔；每次注册会随机轮换使用。",
             },

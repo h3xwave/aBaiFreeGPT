@@ -98,7 +98,7 @@ class CloudflareTempMailbox(BaseMailbox):
     ):
         raw_api = str(api_base or "").strip().rstrip("/")
         if not raw_api:
-            raise ValueError("请填写 Cloudflare Mail API 地址，例如：https://apimail.ihxw.eu.org")
+            raise ValueError("请填写 Cloudflare Mail API 地址，例如：https://mail.example.com")
         parsed = urlparse(raw_api)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("Cloudflare Mail API 地址格式无效，仅支持 http/https")
