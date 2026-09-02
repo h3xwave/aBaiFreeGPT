@@ -3,6 +3,7 @@
 一个面向本地部署的账号注册、登录恢复、验活和资源池管理平台。项目提供 FastAPI 后端与 React 管理界面，把协议注册、浏览器注册、密码与 2FA、401 刷新、邮箱池和代理池串成一套可观察、可停止、可复用的任务流程。
 - QQ 群：<https://qm.qq.com/q/JigtiO2Hyc>
 - 群二维码：[assets/screenshots/QQ群交流.jpg](assets/screenshots/QQ群交流.jpg)
+- GitHub 仓库：<https://github.com/h3xwave/aBaiFreeGPT>
 ## 核心功能
 
 ### 注册方式
