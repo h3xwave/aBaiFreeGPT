@@ -9,7 +9,13 @@ from core.db import ProviderDefinitionModel, ProviderSettingModel, engine
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_MAILBOX_PROVIDER_KEYS = ("local_ms_pool", "api_mailbox", "domain_imap_catchall", "domain_inbucket")
+SUPPORTED_MAILBOX_PROVIDER_KEYS = (
+    "local_ms_pool",
+    "api_mailbox",
+    "domain_imap_catchall",
+    "domain_inbucket",
+    "cloudflare_temp",
+)
 
 
 def _utcnow() -> datetime:
@@ -234,6 +240,80 @@ _BUILTIN_DEFINITIONS: list[dict] = [
                 "label": "地址占用状态文件",
                 "placeholder": "默认 data/.inbucket_domain_mailbox_state.json",
                 "category": "connection",
+            },
+        ],
+    },
+    {
+        "provider_type": "mailbox",
+        "provider_key": "cloudflare_temp",
+        "label": "Cloudflare 临时邮箱",
+        "description": "基于 Cloudflare Workers / D1 的临时邮箱服务，支持多域名随机轮换、管理员与 JWT 双鉴权直读及自动销毁。",
+        "driver_type": "cloudflare_temp",
+        "default_auth_mode": "admin_auth",
+        "enabled": True,
+        "category": "custom",
+        "auth_modes": [{"value": "admin_auth", "label": "管理员鉴权"}],
+        "fields": [
+            {
+                "key": "cf_mail_api_base",
+                "label": "Cloudflare Mail API 地址",
+                "placeholder": "https://apimail.ihxw.eu.org",
+                "category": "connection",
+                "hint": "Cloudflare Worker / Temp Email 服务的 API 基础地址（末尾无斜杠）。",
+            },
+            {
+                "key": "cf_mail_domain",
+                "label": "邮箱域名（多域名用逗号分隔）",
+                "placeholder": "hxwhub.eu.org, mail.example.com",
+                "category": "connection",
+                "hint": "支持配置多个域名，用中英文逗号或换行分隔；每次注册会随机轮换使用。",
+            },
+            {
+                "key": "cf_mail_local_prefix",
+                "label": "新地址前缀",
+                "placeholder": "reg",
+                "default_value": "reg",
+                "category": "connection",
+                "hint": "生成邮箱示例：reg-a1b2c3d4e5@yourdomain.com。",
+            },
+            {
+                "key": "cf_mail_poll_interval",
+                "label": "轮询间隔秒",
+                "placeholder": "3",
+                "default_value": "3",
+                "category": "connection",
+            },
+            {
+                "key": "cf_mail_request_timeout",
+                "label": "API 请求超时秒",
+                "placeholder": "15",
+                "default_value": "15",
+                "category": "connection",
+            },
+            {
+                "key": "cf_mail_auto_delete",
+                "label": "注册完成后自动删除临时邮箱",
+                "type": "toggle",
+                "default_value": "false",
+                "category": "connection",
+                "hint": "开启后，在注册成功或释放时调用 DELETE /api/delete_address 销毁临时邮箱。",
+            },
+            {
+                "key": "cf_mail_admin_password",
+                "label": "管理员密码 (admin_password)",
+                "placeholder": "用于创建地址与管理员直读",
+                "type": "text",
+                "secret": True,
+                "category": "auth",
+                "hint": "对应服务端的 ADMIN_PASSWORDS 或管理员密码，用于生成新地址及兜底直读收件箱。",
+            },
+            {
+                "key": "cf_mail_jwt_secret",
+                "label": "JWT Secret（可选）",
+                "placeholder": "可选，用于备用鉴权",
+                "type": "text",
+                "secret": True,
+                "category": "auth",
             },
         ],
     },

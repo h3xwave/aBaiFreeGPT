@@ -206,11 +206,18 @@ def _create_domain_inbucket(extra: dict, proxy: str | None) -> BaseMailbox:
     return InbucketDomainMailbox.from_config(extra)
 
 
+def _create_cloudflare_temp(extra: dict, proxy: str | None) -> BaseMailbox:
+    from core.cloudflare_temp_mailbox import CloudflareTempMailbox
+
+    return CloudflareTempMailbox.from_config(extra, proxy=proxy)
+
+
 MAILBOX_FACTORY_REGISTRY = {
     "local_ms_pool": _create_local_ms_pool,
     "api_mailbox": _create_api_mailbox,
     "domain_imap_catchall": _create_domain_imap_catchall,
     "domain_inbucket": _create_domain_inbucket,
+    "cloudflare_temp": _create_cloudflare_temp,
 }
 
 

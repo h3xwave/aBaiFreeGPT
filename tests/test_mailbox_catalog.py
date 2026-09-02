@@ -24,4 +24,5 @@ def test_mailbox_driver_catalog_only_exposes_supported_providers():
         "api_mailbox",
         "domain_imap_catchall",
         "domain_inbucket",
+        "cloudflare_temp",
     }
