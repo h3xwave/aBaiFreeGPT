@@ -21,12 +21,13 @@ def _nav_items_block() -> str:
 def test_sidebar_top_level_nav_includes_registration_tasks():
     block = _nav_items_block()
 
-    assert block.count("path:") == 4
+    assert block.count("path:") == 5
     assert 'path: "/"' not in block
     assert 'path: "/accounts/chatgpt"' in block
     assert 'label: "chatgpt free"' in block
     assert 'path: "/tasks"' in block
     assert 'path: "/microsoft-mailboxes"' in block
+    assert 'path: "/cloudflare-mailboxes"' in block
     assert 'path: "/settings"' in block
     assert 'labelKey: "nav.settings"' in block
 

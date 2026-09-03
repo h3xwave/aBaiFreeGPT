@@ -14,6 +14,7 @@ import Accounts from "@/pages/Accounts";
 import Tasks from "@/pages/Tasks";
 import SettingsPage from "@/pages/SettingsPage";
 import MicrosoftMailboxes from "@/pages/MicrosoftMailboxes";
+import CloudflareMailboxes from "@/pages/CloudflareMailboxes";
 import UpdateBanner from "@/components/UpdateBanner";
 import {
   Moon,
@@ -26,6 +27,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Inbox,
+  Cloud,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -50,6 +52,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/accounts/chatgpt", label: "chatgpt free", icon: Users },
   { path: "/tasks", label: "任务", icon: ListTodo },
   { path: "/microsoft-mailboxes", label: "微软邮箱", icon: Inbox },
+  { path: "/cloudflare-mailboxes", label: "CF邮箱", icon: Cloud },
   { path: "/settings", labelKey: "nav.settings", icon: SettingsIcon },
 ];
 
@@ -267,6 +270,7 @@ function Shell({
             <Route path="/accounts/chatgpt" element={<Accounts />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/microsoft-mailboxes" element={<MicrosoftMailboxes />} />
+            <Route path="/cloudflare-mailboxes" element={<CloudflareMailboxes />} />
             <Route
               path="/settings"
               element={<SettingsPage theme={theme} setTheme={setTheme} />}
