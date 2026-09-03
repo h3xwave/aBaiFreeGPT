@@ -12,9 +12,18 @@ def client():
     return TestClient(app)
 
 
-def test_list_messages_missing_email(client):
+@patch("api.cloudflare_mailbox._get_mailbox_instance")
+def test_list_messages_optional_email(mock_get_instance, client):
+    mock_mailbox = MagicMock()
+    mock_mailbox.fetch_messages_for_email.return_value = []
+    mock_get_instance.return_value = mock_mailbox
+
     res = client.get("/api/cloudflare-mailbox/messages")
-    assert res.status_code == 422
+    assert res.status_code == 200
+    data = res.json()
+    assert data["email"] == ""
+    assert data["limit"] == 10
+    assert data["offset"] == 0
 
 
 def test_list_messages_invalid_email(client):

@@ -64,21 +64,22 @@ class FetchCodeRequest(BaseModel):
 
 @router.get("/messages")
 async def list_messages(
-    email: str = Query(..., description="邮箱地址，如 user@domain.com"),
-    limit: int = Query(default=20, ge=1, le=50, description="读取条数"),
+    email: str = Query(default="", description="可选邮箱地址，留空则获取全部邮件"),
+    limit: int = Query(default=10, ge=1, le=100, description="读取条数，默认10"),
     offset: int = Query(default=0, ge=0, description="偏移量"),
     api_base: str = Query(default="", description="可选覆盖 API 地址"),
     admin_password: str = Query(default="", description="可选覆盖管理员密码"),
 ):
-    """查询指定 Cloudflare 邮箱的收件列表。"""
-    decoded_email = unquote(email.strip())
-    if "@" not in decoded_email:
+    """查询 Cloudflare 邮箱的收件列表（若未输入邮箱则查询全站所有最新信件）。"""
+    decoded_email = unquote(email.strip()) if email else ""
+    if decoded_email and "@" not in decoded_email:
         raise HTTPException(status_code=400, detail="邮箱地址格式无效")
 
+    domain_override = decoded_email.split("@")[1] if ("@" in decoded_email) else ""
     mailbox = _get_mailbox_instance(
         api_base_override=api_base,
         admin_password_override=admin_password,
-        domain_override=decoded_email.split("@")[1],
+        domain_override=domain_override,
     )
 
     try:
@@ -94,6 +95,8 @@ async def list_messages(
     return {
         "email": decoded_email,
         "count": len(messages),
+        "limit": limit,
+        "offset": offset,
         "messages": messages,
     }
 

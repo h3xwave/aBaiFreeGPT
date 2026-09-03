@@ -274,14 +274,30 @@ class CloudflareTempMailbox(BaseMailbox):
         return []
 
     def fetch_messages_for_email(
-        self, email: str, limit: int = 20, offset: int = 0
+        self, email: str = "", limit: int = 10, offset: int = 0
     ) -> list[dict]:
-        """Fetch email list for a given email address using admin or available auth."""
+        """Fetch email list for a given email address (or all emails if empty) using admin auth."""
         target_address = str(email or "").strip()
+        admin_headers = self._get_admin_headers()
+
+        # 1. 若没有指定 email，直接请求 /admin/mails 获取全量邮件
+        if not target_address:
+            try:
+                res = self.session.get(
+                    f"{self.api_base}/admin/mails",
+                    params={"limit": limit, "offset": offset},
+                    headers=admin_headers,
+                    timeout=self.request_timeout,
+                )
+                if res.status_code == 200:
+                    return self._parse_mail_list(res.json())
+            except Exception as exc:
+                logger.debug("Cloudflare 管理员读取全量邮件异常: %s", exc)
+            return []
+
         local_name = target_address.split("@")[0] if "@" in target_address else target_address
         domain = target_address.split("@")[1] if "@" in target_address else ""
 
-        admin_headers = self._get_admin_headers()
         try:
             res = self.session.get(
                 f"{self.api_base}/admin/mails",
