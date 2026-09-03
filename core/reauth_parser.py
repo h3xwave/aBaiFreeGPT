@@ -6,9 +6,11 @@ Aligned with the multi-column format from upstream:
     email----password----email_password
     email----password----email_password----mail_token
     email----password----email_password----mail_token----totp_secret
+    email----password----totp_secret
     email----------------totp_secret
 
 Also supports CSV (comma-separated), Tab-separated, and space-separated lines.
+Includes smart heuristics to identify base32 TOTP secrets.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_BASE32_RE = re.compile(r"^[A-Z2-7]{16,64}$")
 MAX_IMPORT_ACCOUNTS = 5000
 
 
@@ -30,6 +33,11 @@ class ParsedReauthAccount:
     mail_token: str = ""
     totp_secret: str = ""
     line_number: int = 0
+
+
+def _is_probable_totp_secret(text: str) -> bool:
+    clean = text.strip().replace(" ", "").upper()
+    return bool(_BASE32_RE.fullmatch(clean)) and len(clean) in (16, 26, 32, 64)
 
 
 def _split_account_line(line: str) -> list[str]:
@@ -68,17 +76,39 @@ def parse_reauth_text(text: str) -> Tuple[List[ParsedReauthAccount], List[str]]:
             continue
         seen.add(key)
 
-        password = parts[1].strip() if len(parts) > 1 else ""
-        email_password = parts[2].strip() if len(parts) > 2 else ""
-        mail_token = parts[3].strip() if len(parts) > 3 else ""
-        totp_secret = parts[4].strip() if len(parts) > 4 else ""
+        password = ""
+        email_password = ""
+        mail_token = ""
+        totp_secret = ""
 
-        # Special case: 2 parts where part 2 looks like a 32-char base32 TOTP secret rather than password
-        if len(parts) == 2 and not totp_secret:
-            potential_secret = parts[1].strip().replace(" ", "").upper()
-            if len(potential_secret) in (16, 26, 32) and re.fullmatch(r"[A-Z2-7]+", potential_secret):
-                # Could be used as either or both
-                pass
+        if len(parts) == 2:
+            val = parts[1].strip()
+            # 如果第 2 列是 16/32 位 Base32 秘钥且全大写字母数字，可能是仅邮箱+2FA
+            if _is_probable_totp_secret(val):
+                totp_secret = val
+            else:
+                password = val
+        elif len(parts) == 3:
+            # 常见格式：email----password----totp_secret 或 email----password----email_pwd
+            password = parts[1].strip()
+            part3 = parts[2].strip()
+            if _is_probable_totp_secret(part3):
+                totp_secret = part3
+            else:
+                email_password = part3
+        elif len(parts) == 4:
+            password = parts[1].strip()
+            email_password = parts[2].strip()
+            part4 = parts[3].strip()
+            if _is_probable_totp_secret(part4):
+                totp_secret = part4
+            else:
+                mail_token = part4
+        elif len(parts) >= 5:
+            password = parts[1].strip()
+            email_password = parts[2].strip()
+            mail_token = parts[3].strip()
+            totp_secret = parts[4].strip()
 
         accounts.append(
             ParsedReauthAccount(

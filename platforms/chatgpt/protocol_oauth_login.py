@@ -155,6 +155,19 @@ class ChatGPTProtocolReauthorizer:
         }
         authorize_url = f"{OPENAI_AUTH}/oauth/authorize?{urlencode(authorize_params)}"
 
+        # 0. 如果配置了邮箱驱动，提前记录当前已有邮件 ID，防止读到旧验证码
+        account = MailboxAccount(
+            email=email,
+            account_id=email,
+            extra={"jwt": mail_token or None, "domain": email.split("@")[1] if "@" in email else ""},
+        )
+        before_ids: set = set()
+        if self.mailbox:
+            try:
+                before_ids = self.mailbox.get_current_ids(account)
+            except Exception as exc:
+                logger.debug("获取历史邮件 ID 异常（不影响后续）: %s", exc)
+
         # 1. Bootstrap OAuth session
         self.log("[OAuth] 1/6 发起 GET /oauth/authorize 会话初始化...")
         resp = self.session.get(
@@ -250,8 +263,8 @@ class ChatGPTProtocolReauthorizer:
                 extra={"jwt": mail_token or None, "domain": email.split("@")[1] if "@" in email else ""},
             )
 
-            # Wait for OTP code via Cloudflare / Mailbox provider
-            otp_code = self.mailbox.wait_for_code(account, timeout=120)
+            # Wait for OTP code via Cloudflare / Mailbox provider (using before_ids to ignore old emails)
+            otp_code = self.mailbox.wait_for_code(account, before_ids=before_ids, timeout=120)
             self.log(f"[OAuth] 成功获取到 6 位验证码: {otp_code}，正在验证...")
 
             headers_otp = self._json_headers(f"{OPENAI_AUTH}/email-verification")
@@ -316,17 +329,41 @@ class ChatGPTProtocolReauthorizer:
         # Follow redirects until reaching callback URL with code
         current_target = callback_url or authorize_url
         for _ in range(8):
-            if "code=" in current_target and ("auth/callback" in current_target or "state=" in current_target):
+            # 1. 优先检查当前 URL 是否直接携带 code=
+            if "code=" in current_target:
                 parsed = urlparse(current_target)
                 qs = parse_qs(parsed.query)
                 if "code" in qs:
                     auth_code = qs["code"][0]
                     break
 
-            r_step = self.session.get(current_target, allow_redirects=False, timeout=30)
-            loc = r_step.headers.get("Location")
+            # 2. 如果目标是本地未监听端口 (localhost:1455)，不要发起真实网络请求，直接解析
+            if "localhost:1455" in current_target or "127.0.0.1:1455" in current_target:
+                parsed = urlparse(current_target)
+                qs = parse_qs(parsed.query)
+                if "code" in qs:
+                    auth_code = qs["code"][0]
+                    break
+
+            try:
+                r_step = self.session.get(current_target, allow_redirects=False, timeout=30)
+            except Exception as req_exc:
+                # 某些环境对 localhost 连接直接报错，检查异常信息中是否有目标 url
+                logger.debug("跟随重定向异常: %s", req_exc)
+                break
+
+            loc = str(r_step.headers.get("Location") or "")
             if not loc:
                 break
+
+            # 3. 检查 Location 是否直接是带 code 的 callback 目标
+            if "code=" in loc:
+                parsed = urlparse(loc)
+                qs = parse_qs(parsed.query)
+                if "code" in qs:
+                    auth_code = qs["code"][0]
+                    break
+
             current_target = urljoin(OPENAI_AUTH, loc)
 
         if not auth_code:

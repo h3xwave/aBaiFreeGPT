@@ -21,6 +21,7 @@ from services.reauth_service import save_reauthorized_account
 router = APIRouter(prefix="/chatgpt/reauth", tags=["chatgpt-reauth"])
 
 _reauth_lock = threading.Lock()
+_state_lock = threading.Lock()
 _task_state = {
     "running": False,
     "total": 0,
@@ -35,9 +36,10 @@ _task_state = {
 def _push_log(msg: str):
     timestamp = time.strftime("%H:%M:%S")
     line = f"[{timestamp}] {msg}"
-    _task_state["logs"].append(line)
-    if len(_task_state["logs"]) > 500:
-        _task_state["logs"].pop(0)
+    with _state_lock:
+        _task_state["logs"].append(line)
+        if len(_task_state["logs"]) > 500:
+            _task_state["logs"].pop(0)
 
 
 def _lookup_db_totp(email: str) -> str:
@@ -218,12 +220,13 @@ async def start_reauth_task(
 @router.get("/status")
 def get_reauth_status():
     """获取当前重新授权任务的执行进度与实时日志。"""
-    return {
-        "running": _task_state["running"],
-        "total": _task_state["total"],
-        "current": _task_state["current"],
-        "success": _task_state["success"],
-        "fail": _task_state["fail"],
-        "logs": _task_state["logs"],
-        "failed_accounts": _task_state["failed_accounts"],
-    }
+    with _state_lock:
+        return {
+            "running": _task_state["running"],
+            "total": _task_state["total"],
+            "current": _task_state["current"],
+            "success": _task_state["success"],
+            "fail": _task_state["fail"],
+            "logs": list(_task_state["logs"]),
+            "failed_accounts": list(_task_state["failed_accounts"]),
+        }
