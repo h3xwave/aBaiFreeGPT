@@ -121,6 +121,7 @@ async def get_message_detail(
             mailbox.get_message_detail,
             mail_id=clean_id,
             jwt_token=jwt or None,
+            target_email=unquote(email.strip()) if email else "",
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"获取邮件详情失败: {exc}") from exc

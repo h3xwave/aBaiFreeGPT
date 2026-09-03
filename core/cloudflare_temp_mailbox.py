@@ -78,6 +78,62 @@ def _truthy(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on", "y"}
 
 
+def _parse_raw_email(raw_str: str) -> dict:
+    """Parse standard RFC 822 / MIME raw email string into subject, html, text."""
+    import email
+    from email import policy
+
+    try:
+        msg = email.message_from_string(raw_str, policy=policy.default)
+        subject = str(msg.get("subject") or "")
+        from_hdr = str(msg.get("from") or "")
+        to_hdr = str(msg.get("to") or "")
+
+        html_body = ""
+        text_body = ""
+
+        # Extract html body
+        html_part = msg.get_body(preferencelist=("html",))
+        if html_part:
+            try:
+                html_body = html_part.get_content()
+            except Exception:
+                pass
+
+        # Extract plain text body
+        text_part = msg.get_body(preferencelist=("plain",))
+        if text_part:
+            try:
+                text_body = text_part.get_content()
+            except Exception:
+                pass
+
+        if not html_body and not text_body:
+            for part in msg.walk():
+                ctype = part.get_content_type()
+                if ctype == "text/html" and not html_body:
+                    html_body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="replace")
+                elif ctype == "text/plain" and not text_body:
+                    text_body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="replace")
+
+        return {
+            "subject": subject,
+            "from": from_hdr,
+            "to": to_hdr,
+            "html": html_body or text_body or raw_str,
+            "text": text_body or html_body or raw_str,
+        }
+    except Exception as exc:
+        logger.debug("解析 raw 邮件异常: %s", exc)
+        return {
+            "subject": "",
+            "from": "",
+            "to": "",
+            "html": raw_str,
+            "text": raw_str,
+        }
+
+
 class CloudflareTempMailbox(BaseMailbox):
     """Temporary email provider using Cloudflare Workers / D1 API."""
 
@@ -328,14 +384,43 @@ class CloudflareTempMailbox(BaseMailbox):
         return []
 
     def get_message_detail(
-        self, mail_id: str | int, jwt_token: str | None = None
+        self, mail_id: str | int, jwt_token: str | None = None, target_email: str = ""
     ) -> dict | None:
         """Fetch detail for a single message by ID."""
         account = MailboxAccount(
-            email="",
+            email=target_email,
             extra={"jwt": jwt_token} if jwt_token else {},
         )
-        return self._fetch_email_detail(account, mail_id)
+        detail = self._fetch_email_detail(account, mail_id)
+        if detail:
+            return detail
+
+        # 如果单封详情端点未提供（例如有的 Worker 服务不开放 /admin/mails/:id，只在列表返回 raw 字段）
+        # 从 /admin/mails 列表中直接按 ID 定位邮件并解析其 raw 字段
+        admin_headers = self._get_admin_headers()
+        try:
+            params: dict[str, Any] = {"limit": 100, "offset": 0}
+            if target_email:
+                params["address"] = target_email
+            res = self.session.get(
+                f"{self.api_base}/admin/mails",
+                params=params,
+                headers=admin_headers,
+                timeout=self.request_timeout,
+            )
+            if res.status_code == 200:
+                mails = self._parse_mail_list(res.json())
+                for m in mails:
+                    if str(m.get("id")) == str(mail_id):
+                        raw_data = m.get("raw")
+                        if raw_data and isinstance(raw_data, str):
+                            parsed = _parse_raw_email(raw_data)
+                            m.update(parsed)
+                        return m
+        except Exception as exc:
+            logger.debug("从邮件列表兜底查找 raw 邮件异常: %s", exc)
+
+        return None
 
     def _fetch_email_detail(self, account: MailboxAccount, mail_id: str | int) -> dict | None:
         """Fetch email detail content by mail ID."""
