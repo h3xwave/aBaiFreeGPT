@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Copy, KeyRound, Plus, RefreshCw, ShieldCheck, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Copy, KeyRound, LogIn, Plus, RefreshCw, ShieldCheck, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { apiFetch } from '@/lib/utils'
+import ReauthDialog from '@/components/accounts/ReauthDialog'
 
 type AccountListItem = {
   id: number
@@ -365,6 +366,7 @@ export default function Accounts() {
   const [hasRefreshTokenOnly, setHasRefreshTokenOnly] = useState(false)
   const [loading, setLoading] = useState(false)
   const [showRegister, setShowRegister] = useState(false)
+  const [showReauth, setShowReauth] = useState(false)
   const [runningAction, setRunningAction] = useState('')
   const [maintenanceConcurrency, setMaintenanceConcurrency] = useState('100')
   const [maintenanceProxyNode, setMaintenanceProxyNode] = useState('')
@@ -490,6 +492,14 @@ export default function Accounts() {
   return (
     <div className="space-y-4">
       {showRegister ? <RegisterDialog onClose={() => setShowRegister(false)} onCreated={(task) => { setShowRegister(false); setCreatedTask(task) }} /> : null}
+      {showReauth ? (
+        <ReauthDialog
+          onClose={() => setShowReauth(false)}
+          onComplete={() => {
+            void load()
+          }}
+        />
+      ) : null}
       <Card className="border border-[var(--border)] bg-[var(--bg-pane)]/40 p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -526,6 +536,9 @@ export default function Accounts() {
             <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void createRefreshCheckTask(true)} title="先用 Camoufox 并行验活，失活账号再用协议登录恢复 AT">
               <ShieldCheck className="mr-1.5 h-4 w-4" />
               {runningAction === 'refresh_browser' ? '创建中…' : '401 验活'}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowReauth(true)} title="批量导入已有账号并自动重新授权登录">
+              <LogIn className="mr-1.5 h-4 w-4" />重新授权
             </Button>
             <Button size="sm" onClick={() => setShowRegister(true)}>
               <Plus className="mr-1.5 h-4 w-4" />协议注册
