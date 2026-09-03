@@ -1,5 +1,19 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { ChevronLeft, ChevronRight, Cloud, Copy, ExternalLink, KeyRound, Mail, RefreshCw, Search } from 'lucide-react'
+import {
+  AlertCircle,
+  CheckSquare,
+  ChevronLeft,
+  ChevronRight,
+  Cloud,
+  Copy,
+  ExternalLink,
+  KeyRound,
+  Mail,
+  RefreshCw,
+  Search,
+  Square,
+  Trash2,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -42,10 +56,15 @@ export default function CloudflareMailboxes() {
   const [selectedMail, setSelectedMail] = useState<MessageDetail | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // 多选集合与删除状态
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
+
   const loadMessages = async (targetEmail: string, pageNum: number, size: number) => {
     setLoading(true)
     setError('')
     setSelectedMail(null)
+    setSelectedIds(new Set())
     const offset = (pageNum - 1) * size
     try {
       const emailParam = targetEmail ? `&email=${encodeURIComponent(targetEmail)}` : ''
@@ -94,15 +113,86 @@ export default function CloudflareMailboxes() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // 多选操作
+  const toggleSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === messages.length && messages.length > 0) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(messages.map(m => String(m.id))))
+    }
+  }
+
+  // 删除单封邮件
+  const handleDeleteSingle = async (mailId: string | number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    if (!window.confirm(`确定要彻底删除该封邮件 (ID: ${mailId}) 吗？`)) return
+
+    setDeleting(true)
+    setError('')
+    try {
+      await apiFetch(`/cloudflare-mailbox/messages/${encodeURIComponent(String(mailId))}`, {
+        method: 'DELETE',
+      })
+      if (selectedMail?.id === String(mailId)) {
+        setSelectedMail(null)
+      }
+      // 重新刷新列表
+      await loadMessages(activeQuery, page, pageSize)
+    } catch (err: any) {
+      setError(err?.message || '删除邮件失败')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  // 批量删除选中的邮件
+  const handleBatchDelete = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`确定要彻底删除选中的 ${ids.length} 封邮件吗？此操作不可逆！`)) return
+
+    setDeleting(true)
+    setError('')
+    try {
+      await apiFetch('/cloudflare-mailbox/messages/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      if (selectedMail && selectedIds.has(selectedMail.id)) {
+        setSelectedMail(null)
+      }
+      setSelectedIds(new Set())
+      await loadMessages(activeQuery, page, pageSize)
+    } catch (err: any) {
+      setError(err?.message || '批量删除邮件失败')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Card className="border border-[var(--border)] bg-[var(--bg-pane)]/40 p-5">
         <div className="flex items-center gap-2">
           <Cloud className="h-5 w-5 text-amber-500" />
-          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Cloudflare 临时邮箱查信</h1>
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Cloudflare 临时邮箱查信与管理</h1>
         </div>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
-          默认展示所有域名的全部最新邮件；也可输入特定邮箱地址过滤收信。系统自动识别提取 6 位验证码及验证链接。
+          默认展示全部域名的最新邮件，支持单封/批量勾选彻底删除。系统自动识别并高亮提取 6 位验证码及验证链接。
         </p>
       </Card>
 
@@ -118,11 +208,11 @@ export default function CloudflareMailboxes() {
             />
           </label>
           <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={loading}>
+            <Button type="submit" size="sm" disabled={loading || deleting}>
               <Search className="mr-1.5 h-3.5 w-3.5" /> 筛选查询
             </Button>
             {activeQuery && (
-              <Button type="button" size="sm" variant="outline" onClick={handleReset}>
+              <Button type="button" size="sm" variant="outline" onClick={handleReset} disabled={loading || deleting}>
                 清除筛选
               </Button>
             )}
@@ -130,19 +220,51 @@ export default function CloudflareMailboxes() {
         </form>
 
         {error && (
-          <div className="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-            {error}
+          <div className="mt-3 flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
           </div>
         )}
 
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              {/* 全选按钮 */}
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                >
+                  {selectedIds.size === messages.length ? (
+                    <CheckSquare className="h-4 w-4 text-[var(--accent)]" />
+                  ) : (
+                    <Square className="h-4 w-4 text-[var(--text-muted)]" />
+                  )}
+                  <span>全选</span>
+                </button>
+              )}
+
+              {/* 批量删除按钮 */}
+              {selectedIds.size > 0 && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleBatchDelete}
+                  disabled={deleting}
+                  className="h-7 px-2.5 text-xs bg-red-600 hover:bg-red-700 text-white"
+                >
+                  <Trash2 className="mr-1 h-3.5 w-3.5" />
+                  {deleting ? '删除中…' : `删除所选 (${selectedIds.size})`}
+                </Button>
+              )}
+
               <h2 className="text-sm font-medium text-[var(--text-primary)]">
                 {activeQuery ? `【${activeQuery}】的收件记录` : '全部收件记录'}
                 <span className="ml-1 text-xs text-[var(--text-muted)]">（当前页 {messages.length} 封）</span>
               </h2>
             </div>
+
             <div className="flex items-center gap-3">
               {/* 每页行数选择 */}
               <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
@@ -167,7 +289,7 @@ export default function CloudflareMailboxes() {
                 size="sm"
                 variant="outline"
                 onClick={() => loadMessages(activeQuery, page, pageSize)}
-                disabled={loading}
+                disabled={loading || deleting}
               >
                 <RefreshCw className={`mr-1.5 h-3 w-3 ${loading ? 'animate-spin' : ''}`} /> 刷新
               </Button>
@@ -185,13 +307,15 @@ export default function CloudflareMailboxes() {
                 </p>
               ) : (
                 messages.map((msg, idx) => {
-                  const isSelected = selectedMail?.id === String(msg.id)
+                  const sid = String(msg.id)
+                  const isSelected = selectedMail?.id === sid
+                  const isChecked = selectedIds.has(sid)
                   const recipient = msg.to || msg.address || ''
                   return (
                     <div
                       key={msg.id || idx}
                       onClick={() => loadMailDetail(msg.id)}
-                      className={`cursor-pointer rounded-lg border p-3 transition-all ${
+                      className={`group relative cursor-pointer rounded-lg border p-3 transition-all ${
                         isSelected
                           ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                           : 'border-[var(--border)] bg-[var(--bg-pane)]/50 hover:border-[var(--border-strong)]'
@@ -199,16 +323,38 @@ export default function CloudflareMailboxes() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-2">
+                          {/* 复选框 */}
+                          <div
+                            onClick={e => toggleSelect(sid, e)}
+                            className="p-0.5 text-[var(--text-muted)] hover:text-[var(--accent)]"
+                          >
+                            {isChecked ? (
+                              <CheckSquare className="h-4 w-4 text-[var(--accent)]" />
+                            ) : (
+                              <Square className="h-4 w-4 opacity-50 group-hover:opacity-100" />
+                            )}
+                          </div>
                           <Mail className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
                           <span className="truncate text-sm font-medium text-[var(--text-primary)]">
                             {msg.subject || '(无主题)'}
                           </span>
                         </div>
-                        <span className="shrink-0 text-xs text-[var(--text-muted)]">
-                          {formatTime(msg.created_at || msg.date)}
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs text-[var(--text-muted)]">
+                            {formatTime(msg.created_at || msg.date)}
+                          </span>
+                          {/* 单封删除快捷小按钮 */}
+                          <button
+                            type="button"
+                            title="删除此邮件"
+                            onClick={e => handleDeleteSingle(msg.id, e)}
+                            className="rounded p-1 text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-500 opacity-60 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-xs text-[var(--text-secondary)]">
+                      <div className="mt-1 flex flex-wrap items-center justify-between gap-1 pl-6 text-xs text-[var(--text-secondary)]">
                         <span className="truncate">发件人: {msg.from || '-'}</span>
                         {recipient && <span className="truncate text-[var(--text-muted)]">收件人: {recipient}</span>}
                       </div>
@@ -225,7 +371,7 @@ export default function CloudflareMailboxes() {
                     size="sm"
                     variant="outline"
                     onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page <= 1 || loading}
+                    disabled={page <= 1 || loading || deleting}
                     className="h-7 px-2"
                   >
                     <ChevronLeft className="h-3.5 w-3.5 mr-0.5" /> 上一页
@@ -234,7 +380,7 @@ export default function CloudflareMailboxes() {
                     size="sm"
                     variant="outline"
                     onClick={() => setPage(p => p + 1)}
-                    disabled={messages.length < pageSize || loading}
+                    disabled={messages.length < pageSize || loading || deleting}
                     className="h-7 px-2"
                   >
                     下一页 <ChevronRight className="h-3.5 w-3.5 ml-0.5" />
@@ -247,13 +393,25 @@ export default function CloudflareMailboxes() {
             {selectedMail && (
               <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4 md:col-span-7">
                 <div className="border-b border-[var(--border)] pb-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-semibold text-[var(--text-primary)]">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-base font-semibold text-[var(--text-primary)] truncate">
                       {selectedMail.subject || '(无主题)'}
                     </h3>
-                    <Button size="sm" variant="ghost" onClick={() => setSelectedMail(null)} className="h-6 px-2 text-xs">
-                      关闭
-                    </Button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDeleteSingle(selectedMail.id)}
+                        disabled={deleting}
+                        className="h-7 px-2.5 text-xs bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        <Trash2 className="mr-1 h-3.5 w-3.5" />
+                        删除这封信
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setSelectedMail(null)} className="h-7 px-2 text-xs">
+                        关闭
+                      </Button>
+                    </div>
                   </div>
                 </div>
 

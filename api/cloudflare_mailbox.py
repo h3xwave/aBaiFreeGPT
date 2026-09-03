@@ -153,6 +153,47 @@ async def get_message_detail(
     }
 
 
+class BatchDeleteRequest(BaseModel):
+    ids: List[str] = Field(..., description="待删除的邮件 ID 列表")
+    api_base: Optional[str] = Field("", description="可选覆盖 API 地址")
+    admin_password: Optional[str] = Field("", description="可选覆盖管理员密码")
+
+
+@router.delete("/messages/{message_id}")
+async def delete_message(
+    message_id: str,
+    api_base: str = Query(default="", description="可选覆盖 API 地址"),
+    admin_password: str = Query(default="", description="可选覆盖管理员密码"),
+):
+    """删除单封邮件。"""
+    clean_id = unquote(message_id.strip())
+    mailbox = _get_mailbox_instance(
+        api_base_override=api_base,
+        admin_password_override=admin_password,
+    )
+
+    success = await run_in_threadpool(mailbox.delete_message, mail_id=clean_id)
+    if not success:
+        raise HTTPException(status_code=500, detail=f"删除邮件 {clean_id} 失败")
+
+    return {"id": clean_id, "success": True}
+
+
+@router.post("/messages/batch-delete")
+async def batch_delete_messages(payload: BatchDeleteRequest):
+    """批量删除邮件。"""
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="请传入待删除的邮件 ID 列表")
+
+    mailbox = _get_mailbox_instance(
+        api_base_override=payload.api_base or "",
+        admin_password_override=payload.admin_password or "",
+    )
+
+    result = await run_in_threadpool(mailbox.delete_messages, mail_ids=payload.ids)
+    return result
+
+
 @router.post("/fetch-code")
 async def fetch_code(payload: FetchCodeRequest):
     """轮询等待并获取指定邮箱最新的验证码。"""

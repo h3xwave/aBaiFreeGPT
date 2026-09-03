@@ -588,6 +588,40 @@ class CloudflareTempMailbox(BaseMailbox):
 
         raise TimeoutError(f"Cloudflare 邮箱等待验证链接超时 ({timeout}秒): {account.email}")
 
+    def delete_message(self, mail_id: str | int) -> bool:
+        """Delete a single email message by ID via DELETE /admin/mails/{id}."""
+        msg_id = str(mail_id).strip()
+        if msg_id.startswith("/messages/"):
+            msg_id = msg_id.split("/")[-1]
+
+        admin_headers = self._get_admin_headers()
+        try:
+            res = self.session.delete(
+                f"{self.api_base}/admin/mails/{msg_id}",
+                headers=admin_headers,
+                timeout=self.request_timeout,
+            )
+            return res.status_code in (200, 204)
+        except Exception as exc:
+            logger.debug("Cloudflare 管理员删除邮件异常: %s", exc)
+            return False
+
+    def delete_messages(self, mail_ids: list[str | int]) -> dict[str, Any]:
+        """Delete multiple email messages by IDs."""
+        success_count = 0
+        failed_ids: list[str] = []
+        for mid in mail_ids:
+            if self.delete_message(mid):
+                success_count += 1
+            else:
+                failed_ids.append(str(mid))
+        return {
+            "total": len(mail_ids),
+            "success": success_count,
+            "failed": len(failed_ids),
+            "failed_ids": failed_ids,
+        }
+
     def _delete_address_safe(self, account: MailboxAccount) -> bool:
         jwt_token = (account.extra or {}).get("jwt")
         if not jwt_token:

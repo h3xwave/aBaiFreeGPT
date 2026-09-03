@@ -3,13 +3,16 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
-from infrastructure.provider_definitions_repository import ProviderDefinitionsRepository
-from infrastructure.provider_settings_repository import ProviderSettingsRepository
 
 
 @pytest.fixture
 def client():
     return TestClient(app)
+
+
+def test_list_messages_invalid_email(client):
+    res = client.get("/api/cloudflare-mailbox/messages?email=invalidemail")
+    assert res.status_code == 400
 
 
 @patch("api.cloudflare_mailbox._get_mailbox_instance")
@@ -24,11 +27,6 @@ def test_list_messages_optional_email(mock_get_instance, client):
     assert data["email"] == ""
     assert data["limit"] == 10
     assert data["offset"] == 0
-
-
-def test_list_messages_invalid_email(client):
-    res = client.get("/api/cloudflare-mailbox/messages?email=invalidemail")
-    assert res.status_code == 400
 
 
 @patch("api.cloudflare_mailbox._get_mailbox_instance")
@@ -65,6 +63,36 @@ def test_get_message_detail_with_code_extraction(mock_get_instance, client):
     assert data["id"] == "cf_msg_99"
     assert data["extracted_code"] == "987654"
     assert data["extracted_link"] == "https://auth.openai.com/verify?token=123"
+
+
+@patch("api.cloudflare_mailbox._get_mailbox_instance")
+def test_delete_single_message(mock_get_instance, client):
+    mock_mailbox = MagicMock()
+    mock_mailbox.delete_message.return_value = True
+    mock_get_instance.return_value = mock_mailbox
+
+    res = client.delete("/api/cloudflare-mailbox/messages/15")
+    assert res.status_code == 200
+    assert res.json() == {"id": "15", "success": True}
+    mock_mailbox.delete_message.assert_called_once_with(mail_id="15")
+
+
+@patch("api.cloudflare_mailbox._get_mailbox_instance")
+def test_batch_delete_messages(mock_get_instance, client):
+    mock_mailbox = MagicMock()
+    mock_mailbox.delete_messages.return_value = {
+        "total": 2,
+        "success": 2,
+        "failed": 0,
+        "failed_ids": [],
+    }
+    mock_get_instance.return_value = mock_mailbox
+
+    res = client.post("/api/cloudflare-mailbox/messages/batch-delete", json={"ids": ["15", "16"]})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] == 2
+    mock_mailbox.delete_messages.assert_called_once_with(mail_ids=["15", "16"])
 
 
 @patch("api.cloudflare_mailbox._get_mailbox_instance")
