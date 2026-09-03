@@ -266,13 +266,39 @@ class CloudflareTempMailbox(BaseMailbox):
         raise RuntimeError(f"Cloudflare 邮箱创建失败（已重试 {max_retries} 次）: {last_error}")
 
     def _parse_mail_list(self, data: object) -> list[dict]:
+        mails: list[dict] = []
         if isinstance(data, dict):
             for key in ("results", "data", "mails"):
                 if key in data and isinstance(data[key], list):
-                    return data[key]
+                    mails = list(data[key])
+                    break
         elif isinstance(data, list):
-            return data
-        return []
+            mails = list(data)
+
+        # 智能补全：如果某封邮件缺少 subject/from 但含有 raw 原始报文，自动解析补充
+        for m in mails:
+            if not isinstance(m, dict):
+                continue
+            needs_parse = not m.get("subject") or not m.get("from")
+            raw = m.get("raw")
+            if needs_parse and raw and isinstance(raw, str):
+                parsed = _parse_raw_email(raw)
+                if not m.get("subject") and parsed.get("subject"):
+                    m["subject"] = parsed["subject"]
+                if not m.get("from") and parsed.get("from"):
+                    m["from"] = parsed["from"]
+                if not m.get("to") and parsed.get("to"):
+                    m["to"] = parsed["to"]
+                if not m.get("html") and parsed.get("html"):
+                    m["html"] = parsed["html"]
+                if not m.get("text") and parsed.get("text"):
+                    m["text"] = parsed["text"]
+            # 兜底：如果依然没有 from，用 source 字段补充
+            if not m.get("from") and m.get("source"):
+                m["from"] = m["source"]
+            if not m.get("to") and m.get("address"):
+                m["to"] = m["address"]
+        return mails
 
     def _fetch_emails(self, account: MailboxAccount) -> list[dict]:
         """Fetch email list using address JWT with fallback to admin direct read."""
